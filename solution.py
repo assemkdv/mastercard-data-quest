@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     confusion_matrix, classification_report, roc_auc_score,
@@ -282,19 +282,9 @@ rf = RandomForestClassifier(
 )
 rf.fit(X_train_res, y_train_res)
 
-# ── Model 3: Gradient Boosting (XGBoost-style) ───────────────
-gb = GradientBoostingClassifier(
-    n_estimators=200,
-    max_depth=6,
-    learning_rate=0.05,
-    subsample=0.8,
-    random_state=RANDOM_STATE
-)
-gb.fit(X_train_res, y_train_res)
-
 # ── Cross-validation comparison ───────────────────────────────
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
-models = {"Logistic Regression": lr_pipe, "Random Forest": rf, "Gradient Boosting": gb}
+models = {"Logistic Regression": lr_pipe, "Random Forest": rf}
 print("\nCross-validated ROC-AUC (5-fold, on original train data):")
 for name, model in models.items():
     scores = cross_val_score(model, X_train, y_train, cv=cv, scoring="roc_auc")
@@ -322,7 +312,6 @@ def evaluate(model, X_test, y_test, name, threshold=0.5):
 
 lr_proba, lr_pred, lr_cm, lr_auc, lr_ap = evaluate(lr_pipe, X_test, y_test, "Logistic Regression")
 rf_proba, rf_pred, rf_cm, rf_auc, rf_ap = evaluate(rf, X_test, y_test, "Random Forest")
-gb_proba, gb_pred, gb_cm, gb_auc, gb_ap = evaluate(gb, X_test, y_test, "Gradient Boosting")
 
 # Best model = Random Forest (highest AUC typically)
 best_proba = rf_proba
@@ -351,7 +340,6 @@ from sklearn.metrics import roc_curve
 for name, proba, auc in [
     ("Logistic Regression", lr_proba, lr_auc),
     ("Random Forest", rf_proba, rf_auc),
-    ("Gradient Boosting", gb_proba, gb_auc),
 ]:
     fpr, tpr, _ = roc_curve(y_test, proba)
     axes[1].plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
