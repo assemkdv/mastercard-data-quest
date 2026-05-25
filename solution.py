@@ -388,9 +388,9 @@ print("=" * 60)
 
 # Search grid: broad range to explore depth vs. complexity trade-off
 param_dist = {
-    "n_estimators": [100, 200],
-    "max_depth":    [8, 12],
-    "min_samples_leaf": [3, 5],
+    "n_estimators": [100, 200, 300],
+    "max_depth":    [8, 10, 12, None],
+    "min_samples_leaf": [3, 5, 10],
     "max_features": ["sqrt", "log2"],
 }
 
@@ -401,11 +401,11 @@ rf_base = RandomForestClassifier(
 )
 
 # RandomizedSearchCV is faster than exhaustive grid search on large datasets
-cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 search = RandomizedSearchCV(
     rf_base,
     param_distributions=param_dist,
-    n_iter=6,              # 6 random combinations × 3 folds = 18 fits
+    n_iter=12,             # 12 random combinations
     scoring="roc_auc",
     cv=cv,
     random_state=RANDOM_STATE,
@@ -429,7 +429,7 @@ print("=" * 60)
 
 from sklearn.model_selection import cross_val_score
 
-print("3-fold stratified CV ROC-AUC (on original train set):")
+print("5-fold stratified CV ROC-AUC (on original train set):")
 for name, model in [("Logistic Regression", lr_pipe), ("Random Forest (tuned)", rf)]:
     scores = cross_val_score(model, X_train, y_train, cv=cv, scoring="roc_auc")
     print(f"  {name:<30}: {scores.mean():.4f} ± {scores.std():.4f}")
