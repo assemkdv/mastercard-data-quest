@@ -22,6 +22,7 @@ Deliverables:
     • consumer_score_distribution.png – score histogram for consumer cards
 """
 
+import os
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -46,7 +47,7 @@ import seaborn as sns
 # 0. CONFIGURATION
 # ────────────────────────────────────────────────────────────
 
-DATA_DIR     = "/home/user/mastercard-data-quest"
+DATA_DIR     = os.path.dirname(os.path.abspath(__file__))
 RANDOM_STATE = 42
 THRESHOLD    = 0.41   # optimised for F1 on validation set (see Step 7)
 

@@ -4,6 +4,7 @@ Run: python3 dashboard.py
 Then open: http://127.0.0.1:8050
 """
 
+import os
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -14,7 +15,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ── Re-run feature engineering + model to get all data ────────
-DATA_DIR = "/home/user/mastercard-data-quest"
+DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 
 print("Loading data...")
 biz = pd.read_parquet(f"{DATA_DIR}/business_cards_MDQ.parquet")
