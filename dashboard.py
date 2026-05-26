@@ -200,13 +200,18 @@ def kpi(value, label, color=C_TEXT):
                                "letterSpacing":"0.8px"}),
     ], style=KPI)
 
-# Mastercard logo circles (SVG)
+# Mastercard logo using overlapping CSS circles
 mc_logo = html.Div([
-    html.Svg(viewBox="0 0 38 24", width="54", height="34", children=[
-        html.Circle(cx="15", cy="12", r="10", fill=C_RED),
-        html.Circle(cx="23", cy="12", r="10", fill=C_YELLOW, style={"opacity":"0.9"}),
-    ], style={"overflow":"visible"}),
-], style={"marginRight":"14px"})
+    html.Div(style={
+        "width":"36px","height":"36px","borderRadius":"50%",
+        "background":C_RED,"position":"absolute","left":"0",
+    }),
+    html.Div(style={
+        "width":"36px","height":"36px","borderRadius":"50%",
+        "background":C_YELLOW,"position":"absolute","left":"22px","opacity":"0.9",
+    }),
+], style={"position":"relative","width":"62px","height":"36px",
+          "marginRight":"18px","flexShrink":"0"})
 
 app.layout = html.Div(
     style={"background":C_BG,"minHeight":"100vh","padding":"28px 32px",
