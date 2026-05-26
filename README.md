@@ -29,7 +29,7 @@ Detect self-employed individuals using personal consumer cards for business purp
 
 ## 1. Project Overview
 
-**Author:** Assem Kadirova  
+**Author:** Assem Kadirova & Aiganym Tyshkanbayeva
 **Competition:** Mastercard Data Quest 2026  
 **Market:** Kazakhstan  
 **Task:** Binary classification — identify consumer cardholders who are actually running commercial activity through their personal card
