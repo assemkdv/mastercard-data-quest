@@ -301,7 +301,8 @@ def render_tab(tab):
         for vals, name, color in [(biz_vals,"Business",C_BIZ),(con_vals,"Consumer",C_CON),(hid_vals,"Hidden",C_HIDDEN)]:
             fig_radar.add_trace(go.Scatterpolar(
                 r=vals+[vals[0]], theta=radar_labels+[radar_labels[0]],
-                name=name, line_color=color, fill="toself", fillcolor=color+"22",
+                name=name, line_color=color, fill="toself",
+                fillcolor={"#F4934C":"rgba(244,147,76,0.15)","#4C7BF4":"rgba(76,123,244,0.15)","#2DBF70":"rgba(45,191,112,0.15)"}[color],
             ))
         fig_radar.update_layout(**L(
             title="Behavioural Profile Radar",
