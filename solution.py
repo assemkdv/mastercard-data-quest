@@ -28,7 +28,8 @@ warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
+from sklearn.model_selection import (
+    train_test_split, StratifiedKFold, RandomizedSearchCV, cross_val_score)
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -40,8 +41,6 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import seaborn as sns
 
 # ────────────────────────────────────────────────────────────
 # 0. CONFIGURATION
@@ -86,9 +85,14 @@ print("=" * 60)
 print("STEP 1 – Loading data")
 print("=" * 60)
 
-biz = pd.read_parquet(f"{DATA_DIR}/business_cards_MDQ.parquet")
-con = pd.read_parquet(f"{DATA_DIR}/consumer_cards_MDQ.parquet")
-mer = pd.read_parquet(f"{DATA_DIR}/merchants_reference.parquet")
+try:
+    biz = pd.read_parquet(f"{DATA_DIR}/business_cards_MDQ.parquet")
+    con = pd.read_parquet(f"{DATA_DIR}/consumer_cards_MDQ.parquet")
+    mer = pd.read_parquet(f"{DATA_DIR}/merchants_reference.parquet")
+except FileNotFoundError as e:
+    import sys
+    sys.exit(f"Data file not found: {e}\n"
+             "Place the three parquet files in the same directory as solution.py.")
 
 # Ground-truth labels: 1 = business cardholder, 0 = consumer cardholder
 biz["label"] = 1
@@ -426,8 +430,6 @@ rf = search.best_estimator_
 print("\n" + "=" * 60)
 print("STEP 8 – Cross-validation comparison")
 print("=" * 60)
-
-from sklearn.model_selection import cross_val_score
 
 print("5-fold stratified CV ROC-AUC (on original train set):")
 for name, model in [("Logistic Regression", lr_pipe), ("Random Forest (tuned)", rf)]:
