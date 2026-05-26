@@ -140,20 +140,24 @@ month_names = {10:"Oct",11:"Nov",12:"Dec",1:"Jan",2:"Feb",3:"Mar"}
 
 rf_proba = rf.predict_proba(X_test)[:,1]
 
-# ── COLOURS & LAYOUT ──────────────────────────────────────────
-C_BIZ   = "#F4934C"
-C_CON   = "#4C7BF4"
-C_HIDDEN= "#2DBF70"
-C_BG    = "#0F1117"
-C_CARD  = "#1A1D27"
-C_TEXT  = "#E8EAF0"
-C_MUTED = "#8B8FA8"
-C_GRID  = "#2A2D3A"
+# ── MASTERCARD BRAND COLOURS ──────────────────────────────────
+C_RED    = "#EB001B"   # Mastercard red
+C_YELLOW = "#F79E1B"   # Mastercard yellow
+C_ORANGE = "#FF5F00"   # Mastercard orange (intersection)
+C_BIZ    = C_RED       # business card segment
+C_CON    = C_YELLOW    # consumer card segment
+C_HIDDEN = C_ORANGE    # hidden entrepreneur segment
+C_BG     = "#0D0D0D"   # near-black background
+C_CARD   = "#1A1A1A"   # card surface
+C_BORDER = "#2E2E2E"   # subtle border
+C_TEXT   = "#FFFFFF"
+C_MUTED  = "#999999"
+C_GRID   = "#2E2E2E"
 
 BASE = dict(
     paper_bgcolor=C_BG, plot_bgcolor=C_CARD,
-    font=dict(color=C_TEXT, family="Inter, sans-serif"),
-    margin=dict(l=10, r=10, t=40, b=10),
+    font=dict(color=C_TEXT, family="'Helvetica Neue', Arial, sans-serif"),
+    margin=dict(l=10, r=10, t=44, b=10),
     legend=dict(bgcolor="rgba(0,0,0,0)", font_size=11),
     xaxis=dict(gridcolor=C_GRID, zerolinecolor=C_GRID),
     yaxis=dict(gridcolor=C_GRID, zerolinecolor=C_GRID),
@@ -168,35 +172,77 @@ def L(**kw):
 # ── APP SHELL ─────────────────────────────────────────────────
 app = Dash(__name__, title="MDQ 2026 – Hidden Entrepreneurs")
 
-CARD = {"background":C_CARD,"borderRadius":"12px","padding":"20px",
-        "marginBottom":"16px","border":f"1px solid {C_GRID}"}
-KPI  = {**CARD, "textAlign":"center","padding":"24px 16px"}
+CARD = {
+    "background": C_CARD, "borderRadius": "8px", "padding": "20px",
+    "marginBottom": "16px", "border": f"1px solid {C_BORDER}",
+    "boxShadow": "0 2px 8px rgba(0,0,0,0.4)",
+}
+KPI = {**CARD, "textAlign": "center", "padding": "28px 16px"}
+
+TAB_STYLE = {
+    "background": C_CARD, "color": C_MUTED,
+    "border": f"1px solid {C_BORDER}", "borderRadius": "6px 6px 0 0",
+    "padding": "10px 20px", "fontWeight": "500",
+    "fontFamily": "'Helvetica Neue', Arial, sans-serif",
+}
+TAB_SELECTED = {
+    **TAB_STYLE,
+    "background": C_RED, "color": C_TEXT,
+    "borderBottom": f"2px solid {C_YELLOW}",
+}
 
 def kpi(value, label, color=C_TEXT):
     return html.Div([
-        html.Div(value, style={"fontSize":"2rem","fontWeight":"700","color":color}),
-        html.Div(label, style={"fontSize":"0.8rem","color":C_MUTED,"marginTop":"4px"}),
+        html.Div(value, style={"fontSize":"2.2rem","fontWeight":"700","color":color,
+                               "letterSpacing":"-0.5px"}),
+        html.Div(label, style={"fontSize":"0.75rem","color":C_MUTED,
+                               "marginTop":"6px","textTransform":"uppercase",
+                               "letterSpacing":"0.8px"}),
     ], style=KPI)
 
+# Mastercard logo circles (SVG)
+mc_logo = html.Div([
+    html.Svg(viewBox="0 0 38 24", width="54", height="34", children=[
+        html.Circle(cx="15", cy="12", r="10", fill=C_RED),
+        html.Circle(cx="23", cy="12", r="10", fill=C_YELLOW, style={"opacity":"0.9"}),
+    ], style={"overflow":"visible"}),
+], style={"marginRight":"14px"})
+
 app.layout = html.Div(
-    style={"background":C_BG,"minHeight":"100vh","padding":"24px",
-           "fontFamily":"Inter, sans-serif","color":C_TEXT},
+    style={"background":C_BG,"minHeight":"100vh","padding":"28px 32px",
+           "fontFamily":"'Helvetica Neue', Arial, sans-serif","color":C_TEXT},
     children=[
+        # Header
         html.Div([
-            html.Div("🏦", style={"fontSize":"2rem","marginRight":"12px"}),
+            mc_logo,
             html.Div([
                 html.H1("Hidden Entrepreneur Detection",
-                        style={"margin":"0","fontSize":"1.6rem","fontWeight":"700"}),
-                html.Div("Mastercard Data Quest 2026  •  Kazakhstan Consumer Transactions",
-                         style={"color":C_MUTED,"fontSize":"0.85rem"}),
-            ])
-        ], style={"display":"flex","alignItems":"center","marginBottom":"24px"}),
+                        style={"margin":"0","fontSize":"1.5rem","fontWeight":"700",
+                               "letterSpacing":"-0.3px"}),
+                html.Div("Mastercard Data Quest 2026  •  Kazakhstan",
+                         style={"color":C_MUTED,"fontSize":"0.8rem","marginTop":"3px"}),
+            ]),
+            html.Div(style={"flex":"1"}),
+            html.Div("MDQ 2026", style={
+                "background":f"linear-gradient(135deg,{C_RED},{C_YELLOW})",
+                "color":C_TEXT,"padding":"6px 16px","borderRadius":"20px",
+                "fontSize":"0.75rem","fontWeight":"700","letterSpacing":"1px",
+            }),
+        ], style={"display":"flex","alignItems":"center","marginBottom":"28px",
+                  "borderBottom":f"1px solid {C_BORDER}","paddingBottom":"20px"}),
 
-        dcc.Tabs(id="tabs", value="overview", style={"marginBottom":"20px"}, children=[
-            dcc.Tab(label="Overview",   value="overview"),
-            dcc.Tab(label="Behaviour",  value="behaviour"),
-            dcc.Tab(label="Model",      value="model"),
-            dcc.Tab(label="Candidates", value="candidates"),
+        # Tabs
+        dcc.Tabs(id="tabs", value="overview",
+                 style={"marginBottom":"20px","borderBottom":f"2px solid {C_BORDER}"},
+                 children=[
+            dcc.Tab(label="Overview",   value="overview",
+                    style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Behaviour",  value="behaviour",
+                    style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Model",      value="model",
+                    style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Candidates", value="candidates",
+                    style=TAB_STYLE, selected_style=TAB_SELECTED),
         ]),
         html.Div(id="tab-content"),
     ]
@@ -213,11 +259,11 @@ def render_tab(tab):
             kpi(f"{con_f.shape[0]:,}",              "Consumer Cardholders",  C_CON),
             kpi(f"{len(hidden_f):,}",               "Hidden Entrepreneurs",  C_HIDDEN),
             kpi(f"{len(hidden_f)/len(con_f)*100:.2f}%", "Detection Rate",    C_HIDDEN),
-            kpi("1.0000",                           "Model ROC-AUC",         "#FFD700"),
+            kpi("1.0000",                           "Model ROC-AUC",         C_YELLOW),
         ], style={"display":"grid","gridTemplateColumns":"repeat(5,1fr)","gap":"12px","marginBottom":"16px"})
 
         fig_score = go.Figure(go.Histogram(x=consumer_scores, nbinsx=80,
-                                           marker_color=C_CON, opacity=0.8))
+                                           marker_color=C_RED, opacity=0.8))
         fig_score.add_vline(x=THRESHOLD, line_color="red", line_dash="dash",
                             annotation_text=f"Threshold {THRESHOLD}", annotation_font_color="red")
         fig_score.update_layout(**L(
@@ -302,7 +348,7 @@ def render_tab(tab):
             fig_radar.add_trace(go.Scatterpolar(
                 r=vals+[vals[0]], theta=radar_labels+[radar_labels[0]],
                 name=name, line_color=color, fill="toself",
-                fillcolor={"#F4934C":"rgba(244,147,76,0.15)","#4C7BF4":"rgba(76,123,244,0.15)","#2DBF70":"rgba(45,191,112,0.15)"}[color],
+                fillcolor={"#EB001B":"rgba(235,0,27,0.15)","#F79E1B":"rgba(247,158,27,0.15)","#FF5F00":"rgba(255,95,0,0.15)"}[color],
             ))
         fig_radar.update_layout(**L(
             title="Behavioural Profile Radar",
@@ -395,7 +441,7 @@ def render_tab(tab):
 
         fig_top = px.bar(
             table_df.head(20), x="Score", y="Card Number", orientation="h", color="Score",
-            color_continuous_scale=[[0,C_CON],[0.5,"#FFD700"],[1,C_HIDDEN]],
+            color_continuous_scale=[[0,C_YELLOW],[0.5,C_ORANGE],[1,C_RED]],
             title="Top 20 Hidden Entrepreneur Candidates by Score",
             labels={"Score":"Business Score"},
         )
