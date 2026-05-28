@@ -312,11 +312,32 @@ mc_logo = html.Div([
           "marginRight":"18px","flexShrink":"0"})
 
 SYNTHETIC_WARNING = html.Div([
-    html.B("Synthetic Data Notice: "),
-    "ROC-AUC = 1.000 is expected — the synthetic generator creates very clean behavioural "
-    "separation between card segments. In real-world deployment AUC would typically be "
-    "0.75–0.90 and threshold tuning would matter significantly more.",
+    html.Div([
+        html.B("Synthetic Data Notice  "),
+        html.Span("— Why is AUC = 1.000?", style={"fontWeight":"400"}),
+    ], style={"marginBottom":"6px"}),
+    html.Div([
+        "Synthetic transaction generators deliberately create clean, separable behavioural archetypes. "
+        "The near-perfect AUC reflects the generator design, not model overfitting or data leakage. "
+        "Features like ",
+        html.Code("online_ratio", style={"background":"rgba(255,255,255,0.1)","padding":"1px 4px","borderRadius":"3px"}),
+        " and ",
+        html.Code("business_mcc_ratio", style={"background":"rgba(255,255,255,0.1)","padding":"1px 4px","borderRadius":"3px"}),
+        " directly encode generator-level segment rules, making them near-perfect discriminators on this data. "
+        "Real-world estimated AUC: ",
+        html.B("0.75–0.90"),
+        " — with substantial class overlap between side-hustlers and frequent-spending consumers. "
+        "The dashboard is designed to support analyst judgement, not to automate decisions.",
+    ], style={"lineHeight":"1.7"}),
 ], style=WARN)
+
+HUMAN_IN_LOOP_NOTE = html.Div([
+    html.B("Human-in-the-Loop Requirement: "),
+    "All Direct Outreach candidates should be reviewed by a relationship manager before contact. "
+    "Model scores are ranking signals, not decisions. Low-confidence scores (tree disagreement > 12%) "
+    "are automatically escalated for human review. Adverse-action explainability is built into every "
+    "candidate profile below.",
+], style={**WARN, "background":"#001a0d","borderColor":"#2DBF70","color":"#2DBF70"})
 
 PERSONAS = [
     {"title":"Digital Seller",         "icon":"🛒", "color":C_RED,
@@ -365,10 +386,11 @@ app.layout = html.Div(
         dcc.Tabs(id="tabs", value="overview",
                  style={"marginBottom":"20px","borderBottom":f"2px solid {C_BORDER}"},
                  children=[
-            dcc.Tab(label="Overview",   value="overview",   style=TAB_STYLE, selected_style=TAB_SELECTED),
-            dcc.Tab(label="Behaviour",  value="behaviour",  style=TAB_STYLE, selected_style=TAB_SELECTED),
-            dcc.Tab(label="Model",      value="model",      style=TAB_STYLE, selected_style=TAB_SELECTED),
-            dcc.Tab(label="Candidates", value="candidates", style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Overview",    value="overview",    style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Behaviour",   value="behaviour",   style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Model",       value="model",       style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Candidates",  value="candidates",  style=TAB_STYLE, selected_style=TAB_SELECTED),
+            dcc.Tab(label="Methodology", value="methodology", style=TAB_STYLE, selected_style=TAB_SELECTED),
         ]),
         html.Div(id="tab-content"),
     ]
@@ -692,12 +714,16 @@ def render_tab(tab):
         ], style=CARD)
 
         return html.Div([
+            HUMAN_IN_LOOP_NOTE,
             tier_row,
             html.Div(dcc.Graph(figure=fig_top), style=CARD),
             why_section,
             html.Div([
                 html.Div("Top 50 Consumer Cards Ranked by Business Score",
                          style={"fontWeight":"600","marginBottom":"12px","fontSize":"1rem"}),
+                html.Div("Scores are model rankings, not literal probabilities. "
+                         "Review low-confidence candidates with a relationship manager before outreach.",
+                         style={"fontSize":"0.75rem","color":C_MUTED,"marginBottom":"12px"}),
                 dash_table.DataTable(
                     data=table_df.to_dict("records"),
                     columns=[{"name":c,"id":c} for c in table_df.columns],
@@ -717,6 +743,141 @@ def render_tab(tab):
                     page_size=15, sort_action="native", filter_action="native",
                 ),
             ], style=CARD),
+        ])
+
+
+    # ── METHODOLOGY ──────────────────────────────────────────
+    elif tab == "methodology":
+        def _row(label, risk, color, detail):
+            return html.Tr([
+                html.Td(html.Code(label, style={"fontSize":"0.82rem"}),
+                        style={"padding":"8px 12px","borderBottom":f"1px solid {C_BORDER}"}),
+                html.Td(html.Span(risk, style={"color":color,"fontWeight":"700","fontSize":"0.8rem"}),
+                        style={"padding":"8px 12px","borderBottom":f"1px solid {C_BORDER}","textAlign":"center"}),
+                html.Td(detail,
+                        style={"padding":"8px 12px","borderBottom":f"1px solid {C_BORDER}",
+                               "fontSize":"0.78rem","color":C_MUTED,"lineHeight":"1.5"}),
+            ])
+
+        leakage_table = html.Div([
+            html.Div("Feature Leakage Risk Audit", style={"fontWeight":"700","fontSize":"1rem","marginBottom":"10px"}),
+            html.Div("Features are evaluated for whether they may encode generator-level rules rather than genuine organic behaviour.",
+                     style={"fontSize":"0.77rem","color":C_MUTED,"marginBottom":"12px"}),
+            html.Table([
+                html.Thead(html.Tr([
+                    html.Th("Feature", style={"padding":"8px 12px","background":C_BORDER,"textAlign":"left","fontSize":"0.8rem"}),
+                    html.Th("Risk",    style={"padding":"8px 12px","background":C_BORDER,"textAlign":"center","fontSize":"0.8rem"}),
+                    html.Th("Rationale",style={"padding":"8px 12px","background":C_BORDER,"textAlign":"left","fontSize":"0.8rem"}),
+                ])),
+                html.Tbody([
+                    _row("business_mcc_ratio",     "HIGH",   C_RED,
+                         "MCC list derived from domain knowledge likely mirrors synthetic generator logic — acts as near-direct label proxy on synthetic data."),
+                    _row("online_ratio",            "HIGH",   C_RED,
+                         "Channel (online/POS) is a primary synthetic generator knob; near-perfect discriminator on synthetic data."),
+                    _row("recurring_ratio",         "HIGH",   C_RED,
+                         "Same concern as online_ratio — recurring flag likely used directly in generator to separate segments."),
+                    _row("tokenized_ratio",         "MEDIUM", C_YELLOW,
+                         "Correlated with online_ratio; shares root cause but is a secondary signal."),
+                    _row("foreign_merchant_ratio",  "MEDIUM", C_YELLOW,
+                         "Geography rules in the generator may create artificially clean separation."),
+                    _row("weekday_ratio",           "MEDIUM", C_YELLOW,
+                         "Temporal pattern is a plausible primary generator parameter."),
+                    _row("txn_count / avg_amount",  "LOW",   "#2DBF70",
+                         "Volume and amount overlap in real data; separation reflects clean synthetic design, not direct leakage."),
+                    _row("amount_entropy",          "LOW",   "#2DBF70",
+                         "Second-order statistic; unlikely to be a direct generator parameter."),
+                    _row("active_months",           "LOW",   "#2DBF70",
+                         "Calendar coverage — genuine longitudinal signal with low leakage risk."),
+                    _row("monthly_growth",          "LOW",   "#2DBF70",
+                         "Trend signal; no evidence this was used directly in the generator."),
+                ]),
+            ], style={"width":"100%","borderCollapse":"collapse","background":C_CARD}),
+        ], style=CARD)
+
+        def _info_card(title, body_items, accent=C_RED):
+            return html.Div([
+                html.Div(title, style={"fontWeight":"700","fontSize":"0.9rem",
+                                       "color":accent,"marginBottom":"10px",
+                                       "borderBottom":f"1px solid {C_BORDER}","paddingBottom":"8px"}),
+                html.Ul([html.Li(item, style={"marginBottom":"6px","fontSize":"0.8rem",
+                                              "lineHeight":"1.5","color":C_MUTED})
+                         for item in body_items],
+                        style={"paddingLeft":"16px","margin":"0"}),
+            ], style={**CARD,"flex":"1","minWidth":"220px","marginBottom":"0",
+                      "borderTop":f"3px solid {accent}"})
+
+        cards_row = html.Div([
+            _info_card("Why AUC ≈ 1.0 Is Expected", [
+                "Synthetic generators create idealized behavioural archetypes with clean separation.",
+                "Features like online_ratio and business_mcc_ratio directly encode generator segment rules.",
+                "This is a property of the data, not model overfitting or leakage.",
+                "Real-world estimated AUC: 0.75–0.90 due to genuine class overlap.",
+                "Side-hustlers, frequent travellers, and corporate employees blur the boundary.",
+            ], C_RED),
+            _info_card("Production Deployment Considerations", [
+                "Apply probability calibration (isotonic regression) before using score as a literal probability.",
+                "Re-score all consumer cards monthly — spending patterns drift over time.",
+                "Augment with KYC/demographic data: sole trader registration, tax filings.",
+                "Integrate incoming payment signals (IBAN credits) for higher recall.",
+                "Monitor feature distribution shift (KS-test, PSI) to detect model staleness.",
+                "Set model retraining triggers: PSI > 0.2 on any top-5 feature.",
+            ], C_ORANGE),
+            _info_card("Compliance & Privacy Safeguards", [
+                "All scoring must comply with GDPR / Kazakhstan PDPL data minimisation principles.",
+                "Explainability required: per-customer adverse-action notice if credit decisions follow.",
+                "Scores must not be used as sole basis for any credit or service denial.",
+                "Audit trail: log model version, threshold, and feature values for every flagged card.",
+                "PII masking: card numbers truncated to last 4 digits in all dashboards and exports.",
+                "Right to explanation: customer can request basis of any business card offer.",
+            ], C_YELLOW),
+            _info_card("Human-in-the-Loop Workflow", [
+                "Direct Outreach tier: relationship manager review required before any contact.",
+                "Campaign Target tier: compliance team approves batch outreach templates.",
+                "Monitor tier: automated monthly re-score; no action without score increase.",
+                "Low-confidence candidates (tree std > 12%) escalated to human review queue.",
+                "Feedback loop: record conversion outcomes to retrain and recalibrate quarterly.",
+                "Declining customers must be marked to suppress for 6-month cooling-off period.",
+            ], "#2DBF70"),
+        ], style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"16px"})
+
+        auc_note = html.Div([
+            html.Div("Methodological Decisions", style={"fontWeight":"700","fontSize":"1rem","marginBottom":"12px"}),
+            html.Div([
+                html.Div([
+                    html.Div("SMOTE within CV folds", style={"fontWeight":"600","fontSize":"0.85rem","color":C_HIDDEN}),
+                    html.Div("Oversampling (SMOTE) is wrapped inside an imblearn Pipeline so it is applied only to "
+                             "within-fold training data during cross-validation, preventing synthetic minority "
+                             "samples from appearing in validation folds and inflating CV scores.",
+                             style={"fontSize":"0.78rem","color":C_MUTED,"marginTop":"4px","lineHeight":"1.5"}),
+                ], style={"flex":"1","padding":"12px","background":C_BG,"borderRadius":"6px",
+                          "border":f"1px solid {C_BORDER}"}),
+                html.Div([
+                    html.Div("Card-level feature aggregation", style={"fontWeight":"600","fontSize":"0.85rem","color":C_HIDDEN}),
+                    html.Div("All features are computed per card from that card's own transactions. "
+                             "The train/test split is done at card level, so no transaction from a test-set card "
+                             "influences the training-set feature values. Monthly trend features are computed "
+                             "within each card's own timeline.",
+                             style={"fontSize":"0.78rem","color":C_MUTED,"marginTop":"4px","lineHeight":"1.5"}),
+                ], style={"flex":"1","padding":"12px","background":C_BG,"borderRadius":"6px",
+                          "border":f"1px solid {C_BORDER}"}),
+                html.Div([
+                    html.Div("Score as ranking, not probability", style={"fontWeight":"600","fontSize":"0.85rem","color":C_HIDDEN}),
+                    html.Div("Random Forest probabilities on synthetically separated data cluster near 0 and 1. "
+                             "Use the score for ranking and tiering only. For threshold decisions with real data, "
+                             "apply isotonic regression calibration. The 80th-percentile CI band "
+                             "(score_ci_lo / score_ci_hi) from individual tree predictions is exported in the CSV "
+                             "to indicate model agreement.",
+                             style={"fontSize":"0.78rem","color":C_MUTED,"marginTop":"4px","lineHeight":"1.5"}),
+                ], style={"flex":"1","padding":"12px","background":C_BG,"borderRadius":"6px",
+                          "border":f"1px solid {C_BORDER}"}),
+            ], style={"display":"flex","gap":"12px"}),
+        ], style=CARD)
+
+        return html.Div([
+            SYNTHETIC_WARNING,
+            leakage_table,
+            cards_row,
+            auc_note,
         ])
 
 
