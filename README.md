@@ -17,14 +17,15 @@ Detect self-employed individuals using personal consumer cards for business purp
 9. [Score Interpretation & Action Tiers](#9-score-interpretation--action-tiers)
 10. [Hidden Entrepreneur Personas](#10-hidden-entrepreneur-personas)
 11. [Explainability](#11-explainability)
-12. [Dashboard Guide](#12-dashboard-guide)
-13. [Synthetic Data & Leakage Audit](#13-synthetic-data--leakage-audit)
-14. [Human-in-the-Loop Workflow](#14-human-in-the-loop-workflow)
-15. [Business Recommendations](#15-business-recommendations)
-16. [Files & Outputs](#16-files--outputs)
-17. [Requirements](#17-requirements)
-18. [Deployment](#18-deployment)
-19. [Limitations & Future Work](#19-limitations--future-work)
+12. [Fairness & Bias Checks](#12-fairness--bias-checks)
+13. [Dashboard Guide](#13-dashboard-guide)
+14. [Synthetic Data & Leakage Audit](#14-synthetic-data--leakage-audit)
+15. [Human-in-the-Loop Workflow](#15-human-in-the-loop-workflow)
+16. [Business Recommendations](#16-business-recommendations)
+17. [Files & Outputs](#17-files--outputs)
+18. [Requirements](#18-requirements)
+19. [Deployment](#19-deployment)
+20. [Limitations & Future Work](#20-limitations--future-work)
 
 ---
 
@@ -108,16 +109,17 @@ Steps executed:
 3. **Leakage audit** — validates dataset integrity and risk-rates every feature for potential leakage from synthetic data design
 4. Feature engineering (26 features per card)
 5. Exploratory visualisation
-6. Train/test split (80/20, stratified)
+6. Three-way train/calibration/test split (80/20 outer, 85/15 inner)
 7. Logistic Regression baseline
 8. Random Forest with RandomizedSearchCV (12 combos × 5 folds)
 9. Cross-validation with SMOTE **inside** each fold (via `ImbPipeline` — no leakage into validation)
 10. Evaluation on held-out test set
-11. **Probability calibration analysis** — reliability diagram saved as `calibration_curve.png`
-12. Evaluation charts
-13. Threshold optimisation (F1-maximised)
-14. Score all consumer cards with **uncertainty bands** (tree-level std, 10th–90th percentile CI)
-15. Feature importance & explainability summary
+11. **Isotonic calibration** — `CalibratedClassifierCV(method="isotonic", cv="prefit")` on dedicated holdout; calibration comparison plot saved as `calibration_comparison.png`
+12. Threshold optimisation (F1-maximised)
+13. Score all consumer cards with **uncertainty bands** (tree-level std, 10th–90th percentile CI) using calibrated model
+14. Feature importance
+15. **SHAP explainability** — TreeExplainer beeswarm + waterfall plots saved as `shap_summary.png` and `shap_waterfall_top5.png`
+16. **Fairness checks** — AUC/Precision/Recall/F1 segmented by `bank_name` and `card_tier`; bar charts saved as `fairness_checks.png`
 
 **Runtime:** ~3–5 minutes on a modern laptop (feature engineering on 13M rows + RF with 300 trees).
 
@@ -187,10 +189,11 @@ Open **http://127.0.0.1:8050** in your browser. The dashboard re-trains the mode
 ### Approach
 
 - **Labelling:** Business cardholders → label `1`, consumer cardholders → label `0`
-- **Split:** 80/20 stratified train/test
-- **Class imbalance:** SMOTE oversampling wrapped in `ImbPipeline` — applied only within training folds, never on validation data
+- **Three-way split:** 80% train+calibration / 20% test; within train+calibration, 85% for model training / 15% dedicated calibration holdout
+- **Class imbalance:** SMOTE oversampling wrapped in `ImbPipeline` — applied only within training folds, never on the calibration or test sets
 - **Baseline:** Logistic Regression with StandardScaler
 - **Main model:** Random Forest with RandomizedSearchCV (12 random combinations, 5-fold CV, scoring=ROC-AUC)
+- **Probability calibration:** `CalibratedClassifierCV(rf, method="isotonic", cv="prefit")` fit on the dedicated calibration split; the calibrated model is used for all final consumer scoring
 
 ### Hyperparameter search space
 
@@ -210,7 +213,7 @@ param_dist = {
 | Logistic Regression (baseline) | 1.0000 | 1.0000 |
 | **Random Forest (tuned)** | **1.0000** | **1.0000** |
 
-> AUC = 1.000 is expected on this synthetic dataset. See [Section 13](#13-synthetic-data--leakage-audit) for the full explanation.
+> AUC = 1.000 is expected on this synthetic dataset. See [Section 14](#14-synthetic-data--leakage-audit) for the full explanation.
 
 ### Threshold optimisation
 
@@ -311,14 +314,20 @@ Growing side business alongside regular employment. Mixed consumer and business 
 
 ## 11. Explainability
 
-The dashboard's **Candidates** tab shows a "Why Flagged?" panel for the top 5 candidates. For each card, the top 5 signals are computed by comparing the card's feature values to the **average consumer card**:
+### SHAP Values (notebook Section 15)
 
-- **▲ above average** on a business-like feature (e.g., `online_ratio` higher than typical consumer) → strengthens the business classification
-- **▼ below average** on a consumer-like feature (e.g., `evening_ratio` lower than typical consumer) → also strengthens the business classification
+The notebook uses `shap.TreeExplainer` to compute exact Shapley values for the trained Random Forest:
 
-This is a feature-deviation approach rather than SHAP (which requires an additional library). It produces non-technical, actionable explanations suitable for a relationship manager.
+- **Global beeswarm plot** (`shap_summary.png`) — every feature ranked by mean |SHAP|, showing the direction and magnitude of impact for each card in the training+calibration set
+- **Mean |SHAP| bar chart** — clean global feature ranking suitable for stakeholder presentations
+- **Per-card waterfall plots** (`shap_waterfall_top5.png`) — for the top 5 consumer candidates, showing exactly which features drove the score up or down from the base rate
 
-Example output:
+SHAP values are model-agnostic in interpretation but tree-exact in computation, making them the gold standard for Random Forest explainability.
+
+### Dashboard "Why Flagged?" Panel
+
+The dashboard's **Candidates** tab also shows a feature-deviation explanation for the top 5 candidates — comparing each card's feature values to the average consumer card. This is a lightweight alternative that requires no additional library and produces non-technical, actionable summaries for relationship managers.
+
 ```
 ****9846  Score: 0.756  [Direct Outreach]
 ▲ Online channel usage:   88% vs avg 52%
@@ -330,7 +339,34 @@ Example output:
 
 ---
 
-## 12. Dashboard Guide
+## 12. Fairness & Bias Checks
+
+A responsible ML system must perform consistently across demographic and product segments. Notebook Section 16 evaluates model performance split by two metadata dimensions — `bank_name` and `card_tier` — which are present in the data but **explicitly excluded from `FEATURE_COLS`** so they never influence model training.
+
+### Metrics computed per segment
+
+| Metric | Why it matters |
+|---|---|
+| ROC-AUC | Overall discriminative power in the segment |
+| Precision | What share of flagged cards in this segment are true positives |
+| Recall | What share of true positives in this segment are captured |
+| F1 | Harmonic mean — balanced view of precision and recall |
+
+### Outputs
+
+- **`fairness_checks.png`** — two bar charts side by side: performance by `bank_name` (left) and by `card_tier` (right), with all four metrics overlaid per segment
+- Results are also printed as a formatted table in the notebook
+
+### Interpretation
+
+If AUC or Recall drops significantly for a specific bank or card tier, the model may be under-serving that segment. In a production deployment this would trigger:
+- Segment-specific threshold adjustment
+- Targeted resampling or reweighting for the underperforming segment
+- Escalation for human review on cards from that segment
+
+---
+
+## 13. Dashboard Guide
 
 Run `python3 dashboard.py` and open **http://127.0.0.1:8050**.
 
@@ -372,7 +408,7 @@ Run `python3 dashboard.py` and open **http://127.0.0.1:8050**.
 
 ---
 
-## 13. Synthetic Data & Leakage Audit
+## 14. Synthetic Data & Leakage Audit
 
 > **Important:** The dataset used in this project is **fully synthetic** and was generated specifically for the Mastercard Data Quest 2026 competition. It is for educational and demonstration purposes only.
 
@@ -414,7 +450,7 @@ We audited every engineered feature for the risk that it mirrors the synthetic g
 
 ---
 
-## 14. Human-in-the-Loop Workflow
+## 15. Human-in-the-Loop Workflow
 
 Model scores are **ranking signals, not automated decisions**. The recommended workflow:
 
@@ -434,7 +470,7 @@ Model scores are **ranking signals, not automated decisions**. The recommended w
 
 ---
 
-## 15. Business Recommendations
+## 16. Business Recommendations
 
 1. **Convert top-scored cardholders** — reach out to the 29 flagged cards (score ≥ 0.41) with a tailored business card upgrade offer. Direct Outreach tier (score ≥ 0.75) should receive personalised contact from a relationship manager.
 
@@ -452,11 +488,12 @@ Model scores are **ranking signals, not automated decisions**. The recommended w
 
 ---
 
-## 16. Files & Outputs
+## 17. Files & Outputs
 
 ```
 mastercard-data-quest/
-├── solution.py                      # Full reproducible ML pipeline (14 steps)
+├── solution.ipynb                   # PRIMARY DELIVERABLE — full notebook (17 sections)
+├── solution.py                      # Equivalent standalone ML pipeline script
 ├── dashboard.py                     # Interactive Dash web dashboard (5 tabs)
 ├── requirements.txt                 # Python dependencies
 ├── business_cards_MDQ.parquet       # Training data – business cards (Git LFS)
@@ -464,18 +501,21 @@ mastercard-data-quest/
 ├── merchants_reference.parquet      # Merchant reference table (Git LFS)
 ├── hidden_entrepreneur_scores.csv   # All 80K consumer cards ranked by score
 │                                    #   (includes confidence bands + outreach tier)
-├── calibration_curve.png            # Reliability diagram (probability calibration)
+├── calibration_comparison.png       # Before/after isotonic calibration reliability diagram
 ├── eda_distributions.png            # Feature distributions by segment
 ├── model_evaluation.png             # Confusion matrix, ROC, feature importance
 ├── threshold_analysis.png           # Precision/Recall/F1 vs threshold
-└── consumer_score_distribution.png  # Business score histogram for consumers
+├── consumer_score_distribution.png  # Business score histogram for consumers
+├── shap_summary.png                 # SHAP beeswarm — global feature impact
+├── shap_waterfall_top5.png          # Per-card SHAP waterfall for top 5 candidates
+└── fairness_checks.png              # AUC/Precision/Recall/F1 by bank and card tier
 ```
 
-All PNG files and the CSV are generated by running `solution.py`.
+All PNG files and the CSV are generated by running `solution.ipynb` or `solution.py`.
 
 ---
 
-## 17. Requirements
+## 18. Requirements
 
 ```
 pandas>=2.0.0
@@ -487,6 +527,8 @@ matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.15.0
 dash>=2.11.0
+nbformat>=5.7.0
+shap>=0.43.0
 ```
 
 Install with:
@@ -498,7 +540,7 @@ Tested with Python 3.10 and 3.11.
 
 ---
 
-## 18. Deployment
+## 19. Deployment
 
 ### Local
 
@@ -534,7 +576,7 @@ CMD ["python3", "dashboard.py"]
 
 ---
 
-## 19. Limitations & Future Work
+## 20. Limitations & Future Work
 
 ### Current Limitations
 
@@ -542,16 +584,14 @@ CMD ["python3", "dashboard.py"]
 - **Spending-side only** — no incoming payment data; self-employed income signals are not captured
 - **No demographic or KYC features** — the model is purely transaction-based
 - **Static threshold** — the 0.41 threshold is optimised for this dataset; a real deployment needs periodic recalibration
-- **Score calibration** — RF probabilities on clean synthetic data cluster near 0/1; apply isotonic regression calibration before interpreting scores as literal probabilities in production
+- **Score calibration** — isotonic calibration is applied in the notebook using a dedicated holdout split; in production, recalibrate periodically as score distributions shift
 - **No temporal model** — treats the 6-month window as a static snapshot; a time-series approach could detect emerging businesses earlier
 
 ### Potential Improvements
 
-- Add **SHAP values** for richer per-card explainability (requires `shap` library)
-- Apply **isotonic regression calibration** to produce well-calibrated probabilities for real-world data
 - Train on **rolling windows** to detect businesses as they emerge
 - Add **incoming transfer features** (payroll, B2B payments received)
 - Use **LightGBM or XGBoost** for faster training with similar accuracy
 - Implement **PSI-based drift monitoring** to trigger model retraining (PSI > 0.2 on any top-5 feature)
-- Add **fairness checks** across card tiers and banks
 - Build a **monitoring dashboard** for score drift over time
+- Expand fairness checks to additional demographic segments when data becomes available
