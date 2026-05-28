@@ -1,7 +1,7 @@
 """
 Mastercard Data Quest 2026
 Hidden Entrepreneur Detection – ML Solution
-Author: Assem Kadirova
+Authors: Assem Kadirova & Aiganym Tyshkanbayeva
 
 Task:
     Build a predictive ML model that identifies "hidden entrepreneurs" —
