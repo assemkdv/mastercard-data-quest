@@ -79,15 +79,32 @@ Three parquet files (stored in Git LFS):
 
 ## 4. Quick Start
 
+### Prerequisite: Git LFS
+
+The three transaction datasets in `data/` are tracked with [Git LFS](https://git-lfs.com). Install it **before** cloning, or the parquet files will download as small text pointers instead of real data:
+
+```bash
+# Install Git LFS (one-time, per machine)
+git lfs install
+
+# Then clone as usual
+git clone https://github.com/assemkdv/mastercard-data-quest.git
+cd mastercard-data-quest
+```
+
+> Already cloned without LFS set up? Run `git lfs install && git lfs pull` inside the repo to fetch the real files.
+
+### Run it
+
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run ML pipeline (produces scores + charts, ~3–5 min)
-python3 solution.py
+# 2. Run the ML pipeline (produces scores + charts, ~3–5 min)
+python3 src/solution.py
 
-# 3. Launch interactive dashboard
-python3 dashboard.py
+# 3. Launch the interactive dashboard
+python3 src/dashboard.py
 # Open http://127.0.0.1:8050
 ```
 
@@ -95,41 +112,64 @@ python3 dashboard.py
 
 ## 5. How to Run
 
+The repository ships two parallel entry points that both implement the same core idea (feature engineering → Random Forest → consumer scoring), but at different levels of completeness:
+
+| | `solution.py` | `solution.ipynb` |
+|---|---|---|
+| Role | Lightweight, standalone script version of the pipeline | **Primary deliverable** — full, annotated pipeline |
+| Calibration | Diagnostic calibration curve only (no correction applied) | Isotonic regression (`CalibratedClassifierCV`), used for final scoring |
+| Explainability | Random Forest feature importances only | SHAP (`TreeExplainer`) — global beeswarm + per-card waterfall |
+| Fairness checks | Not included | AUC/Precision/Recall/F1 segmented by `bank_name` and `card_tier` |
+| Saves `model.pkl` | No | Yes |
+
+If you only need scores and charts quickly, run `solution.py`. For the full methodology — calibration, explainability, fairness — run the notebook.
+
 ### ML Pipeline (`solution.py`)
 
-Runs the full 14-step pipeline:
-
 ```bash
-python3 solution.py
+python3 src/solution.py
 ```
 
 Steps executed:
-1. Load data (3 parquet files)
+1. Load data (3 parquet files from `data/`)
 2. Data quality checks & outlier analysis
 3. **Leakage audit** — validates dataset integrity and risk-rates every feature for potential leakage from synthetic data design
 4. Feature engineering (26 features per card)
-5. Exploratory visualisation
-6. Three-way train/calibration/test split (80/20 outer, 85/15 inner)
+5. Exploratory visualisation → `outputs/figures/eda_distributions.png`
+6. Train/test split (80/20) & SMOTE class balancing
 7. Logistic Regression baseline
 8. Random Forest with RandomizedSearchCV (12 combos × 5 folds)
 9. Cross-validation with SMOTE **inside** each fold (via `ImbPipeline` — no leakage into validation)
 10. Evaluation on held-out test set
-11. **Isotonic calibration** — `CalibratedClassifierCV(method="isotonic", cv="prefit")` on dedicated holdout; calibration comparison plot saved as `calibration_comparison.png`
-12. Threshold optimisation (F1-maximised)
-13. Score all consumer cards with **uncertainty bands** (tree-level std, 10th–90th percentile CI) using calibrated model
-14. Feature importance
-15. **SHAP explainability** — TreeExplainer beeswarm + waterfall plots saved as `shap_summary.png` and `shap_waterfall_top5.png`
-16. **Fairness checks** — AUC/Precision/Recall/F1 segmented by `bank_name` and `card_tier`; bar charts saved as `fairness_checks.png`
+11. Diagnostic calibration curve → `outputs/figures/calibration_curve.png` (uncorrected — see the notebook for isotonic calibration)
+12. Evaluation charts → `outputs/figures/model_evaluation.png`
+13. Threshold optimisation (F1-maximised) → `outputs/figures/threshold_analysis.png`
+14. Score all consumer cards with **uncertainty bands** (tree-level std, 10th–90th percentile CI) → `outputs/hidden_entrepreneur_scores.csv`
+15. Feature importance
 
 **Runtime:** ~3–5 minutes on a modern laptop (feature engineering on 13M rows + RF with 300 trees).
+
+### Notebook (`solution.ipynb`)
+
+Open with Jupyter and run all cells (from the repository root, or from `notebooks/` — the notebook locates `data/` and `outputs/` automatically either way):
+
+```bash
+jupyter notebook notebooks/solution.ipynb
+```
+
+In addition to everything `solution.py` does, the notebook adds:
+- **Isotonic calibration** — `CalibratedClassifierCV(method="isotonic", cv="prefit")` on a dedicated calibration holdout; reliability diagram saved as `outputs/figures/calibration_comparison.png`. The calibrated model is what's used for final consumer scoring.
+- **SHAP explainability** — `TreeExplainer` beeswarm + per-card waterfall plots saved as `outputs/figures/shap_summary.png` and `outputs/figures/shap_waterfall_top5.png`
+- **Fairness checks** — AUC/Precision/Recall/F1 segmented by `bank_name` and `card_tier`; bar charts saved as `outputs/figures/fairness_checks.png`
+- Saves the trained model to `outputs/model.pkl`
 
 ### Dashboard (`dashboard.py`)
 
 ```bash
-python3 dashboard.py
+python3 src/dashboard.py
 ```
 
-Open **http://127.0.0.1:8050** in your browser. The dashboard re-trains the model on startup (~2–3 minutes for the first load).
+Open **http://127.0.0.1:8050** in your browser. On first run the dashboard trains its own Random Forest on the same features (~2–3 minutes) and caches it to `outputs/dashboard_cache.pkl.gz`; subsequent starts load from that cache in seconds. Note the dashboard trains independently rather than loading `outputs/model.pkl` — its KPIs reflect its own quick in-memory model, not the notebook's calibrated one.
 
 ---
 
@@ -186,14 +226,16 @@ Open **http://127.0.0.1:8050** in your browser. The dashboard re-trains the mode
 
 ## 7. Model Training & Evaluation
 
+> This section describes the notebook's full pipeline (the primary deliverable). `solution.py` shares the same labelling, split, class-balancing, and Random Forest steps, but uses a plain train/test split (no dedicated calibration holdout) and stops at a diagnostic calibration curve rather than applying isotonic correction — see [Section 5](#5-how-to-run) for the exact differences.
+
 ### Approach
 
 - **Labelling:** Business cardholders → label `1`, consumer cardholders → label `0`
-- **Three-way split:** 80% train+calibration / 20% test; within train+calibration, 85% for model training / 15% dedicated calibration holdout
+- **Three-way split (notebook only):** 80% train+calibration / 20% test; within train+calibration, 85% for model training / 15% dedicated calibration holdout
 - **Class imbalance:** SMOTE oversampling wrapped in `ImbPipeline` — applied only within training folds, never on the calibration or test sets
 - **Baseline:** Logistic Regression with StandardScaler
 - **Main model:** Random Forest with RandomizedSearchCV (12 random combinations, 5-fold CV, scoring=ROC-AUC)
-- **Probability calibration:** `CalibratedClassifierCV(rf, method="isotonic", cv="prefit")` fit on the dedicated calibration split; the calibrated model is used for all final consumer scoring
+- **Probability calibration (notebook only):** `CalibratedClassifierCV(rf, method="isotonic", cv="prefit")` fit on the dedicated calibration split; the calibrated model is used for all final consumer scoring
 
 ### Hyperparameter search space
 
@@ -368,7 +410,7 @@ If AUC or Recall drops significantly for a specific bank or card tier, the model
 
 ## 13. Dashboard Guide
 
-Run `python3 dashboard.py` and open **http://127.0.0.1:8050**.
+Run `python3 src/dashboard.py` and open **http://127.0.0.1:8050**.
 
 ### Tab: Overview
 - Synthetic data notice banner
@@ -492,26 +534,45 @@ Model scores are **ranking signals, not automated decisions**. The recommended w
 
 ```
 mastercard-data-quest/
-├── solution.ipynb                   # PRIMARY DELIVERABLE — full notebook (17 sections)
-├── solution.py                      # Equivalent standalone ML pipeline script
-├── dashboard.py                     # Interactive Dash web dashboard (5 tabs)
-├── requirements.txt                 # Python dependencies
-├── business_cards_MDQ.parquet       # Training data – business cards (Git LFS)
-├── consumer_cards_MDQ.parquet       # Training data – consumer cards (Git LFS)
-├── merchants_reference.parquet      # Merchant reference table (Git LFS)
-├── hidden_entrepreneur_scores.csv   # All 80K consumer cards ranked by score
-│                                    #   (includes confidence bands + outreach tier)
-├── calibration_comparison.png       # Before/after isotonic calibration reliability diagram
-├── eda_distributions.png            # Feature distributions by segment
-├── model_evaluation.png             # Confusion matrix, ROC, feature importance
-├── threshold_analysis.png           # Precision/Recall/F1 vs threshold
-├── consumer_score_distribution.png  # Business score histogram for consumers
-├── shap_summary.png                 # SHAP beeswarm — global feature impact
-├── shap_waterfall_top5.png          # Per-card SHAP waterfall for top 5 candidates
-└── fairness_checks.png              # AUC/Precision/Recall/F1 by bank and card tier
+├── README.md
+├── requirements.txt                     # Python dependencies
+├── render.yaml                          # Render deployment config
+├── notebooks/
+│   └── solution.ipynb                   # PRIMARY DELIVERABLE — full notebook (17 sections)
+├── src/
+│   ├── solution.py                      # Lightweight standalone ML pipeline script
+│   └── dashboard.py                     # Interactive Dash web dashboard (5 tabs)
+├── data/                                # Git LFS
+│   ├── business_cards_MDQ.parquet       # 25,000 confirmed business cardholders
+│   ├── consumer_cards_MDQ.parquet       # 80,000 consumer cardholders
+│   └── merchants_reference.parquet      # Merchant name, MCC, country, recurring capability
+└── outputs/                             # Generated — see note below
+    ├── hidden_entrepreneur_scores.csv   # All 80K consumer cards ranked by score
+    │                                    #   (includes confidence bands + outreach tier)
+    ├── submission.csv                   # card_number + score only — hackathon submission format
+    ├── model.pkl                        # Trained, tuned Random Forest (saved by the notebook)
+    ├── dashboard_cache.pkl.gz           # Precomputed dashboard state (see note below)
+    └── figures/
+        ├── calibration_comparison.png       # Before/after isotonic calibration (notebook only)
+        ├── eda_distributions.png            # Feature distributions by segment
+        ├── model_evaluation.png             # Confusion matrix, ROC, feature importance
+        ├── threshold_analysis.png           # Precision/Recall/F1 vs threshold
+        ├── consumer_score_distribution.png  # Business score histogram for consumers
+        ├── shap_summary.png                 # SHAP beeswarm — global feature impact (notebook only)
+        ├── shap_waterfall_top5.png          # Per-card SHAP waterfall (notebook only)
+        └── fairness_checks.png              # AUC/Precision/Recall/F1 by bank and card tier (notebook only)
+        # calibration_curve.png also appears here if you run solution.py — a simpler,
+        # uncorrected diagnostic plot, not committed since calibration_comparison.png supersedes it
 ```
 
-All PNG files and the CSV are generated by running `solution.ipynb` or `solution.py`.
+### About the generated files in `outputs/`
+
+Everything under `outputs/` is a build artifact — regenerated by running `solution.ipynb` or `src/solution.py` — but the notebook's outputs are committed to the repo so the results are visible without having to run the pipeline first. Running `solution.py` yourself will additionally produce `calibration_curve.png`, a simpler diagnostic plot not currently committed:
+
+- **`hidden_entrepreneur_scores.csv`** and most of `figures/*.png` — produced by both `solution.py` and the notebook (the notebook additionally produces the calibration/SHAP/fairness figures; see [Section 5](#5-how-to-run) for exactly which script produces which file).
+- **`submission.csv`** — a reduced two-column (`card_number`, `score`) version of the scores, in the format required for the Mastercard Data Quest 2026 submission.
+- **`model.pkl`** — the trained, isotonic-calibrated Random Forest saved by the notebook via `joblib.dump`.
+- **`dashboard_cache.pkl.gz`** — a pickled snapshot of `dashboard.py`'s features, precomputed chart data, and its own independently trained model, committed so deployed instances (e.g. on Render) start in seconds instead of retraining on every cold start.
 
 ---
 
@@ -524,11 +585,10 @@ numpy>=1.24.0
 scikit-learn>=1.3.0
 imbalanced-learn>=0.11.0
 matplotlib>=3.7.0
-seaborn>=0.12.0
 plotly>=5.15.0
 dash>=2.11.0
-nbformat>=5.7.0
 shap>=0.43.0
+joblib>=1.3.0
 ```
 
 Install with:
@@ -546,7 +606,7 @@ Tested with Python 3.10 and 3.11.
 
 ```bash
 pip install -r requirements.txt
-python3 dashboard.py
+python3 src/dashboard.py
 # Open http://127.0.0.1:8050
 ```
 
@@ -554,13 +614,15 @@ python3 dashboard.py
 
 The dashboard uses **Dash** (not Streamlit), but can be deployed to any platform that supports Python web apps.
 
-**Entry point:** `dashboard.py`  
-**Port:** `8050` (configurable via environment variable or argument)  
-**Data folder:** Place the three parquet files in the same directory as `dashboard.py`, or set `DATA_DIR` to their location.
+**Entry point:** `src/dashboard.py`  
+**Port:** `8050` (configurable via the `PORT` environment variable)  
+**Data folder:** Place the three parquet files in `data/` at the repository root — `dashboard.py` locates it automatically from its own location under `src/`.
 
 For cloud deployment, ensure the parquet files are either:
-- Included in the deployment bundle (they are ~200MB, which may require Git LFS support)
+- Included in the deployment bundle via Git LFS (they are ~200MB total)
 - Hosted in object storage (S3, GCS) and loaded via URL at startup
+
+This repository deploys to [Render](https://render.com) using the included `render.yaml`.
 
 ### Docker (example)
 
@@ -571,7 +633,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 EXPOSE 8050
-CMD ["python3", "dashboard.py"]
+CMD ["python3", "src/dashboard.py"]
 ```
 
 ---

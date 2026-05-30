@@ -1,8 +1,8 @@
 """
 Mastercard Data Quest 2026 – Hidden Entrepreneur Dashboard
-Run: python3 dashboard.py  →  open http://127.0.0.1:8050
+Run: python3 src/dashboard.py  →  open http://127.0.0.1:8050
 
-First run trains the model (~3 min) and saves dashboard_cache.pkl.gz.
+First run trains the model (~3 min) and saves outputs/dashboard_cache.pkl.gz.
 Every subsequent start loads from cache in < 10 seconds.
 Commit dashboard_cache.pkl.gz so deployed instances start instantly too.
 """
@@ -22,9 +22,12 @@ from plotly.subplots import make_subplots
 from dash import Dash, dcc, html, Input, Output, dash_table
 from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve
 
-DATA_DIR   = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR   = os.path.join(ROOT_DIR, "data")
+OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 THRESHOLD  = 0.41
-CACHE_PATH = f"{DATA_DIR}/dashboard_cache.pkl.gz"
+CACHE_PATH = f"{OUTPUT_DIR}/dashboard_cache.pkl.gz"
 
 BUSINESS_MCCS  = {"7311","7372","5968","4816","7399","7392","5045","5065","5085",
                    "4814","7011","4511","5712","7389","5200","5040"}

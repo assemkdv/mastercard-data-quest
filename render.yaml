@@ -3,7 +3,7 @@ services:
     name: mdq2026-hidden-entrepreneurs
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python dashboard.py
+    startCommand: python src/dashboard.py
     plan: free
     envVars:
       - key: PYTHON_VERSION

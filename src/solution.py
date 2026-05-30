@@ -48,7 +48,12 @@ import matplotlib.pyplot as plt
 # 0. CONFIGURATION
 # ────────────────────────────────────────────────────────────
 
-DATA_DIR     = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR     = os.path.join(ROOT_DIR, "data")
+OUTPUT_DIR   = os.path.join(ROOT_DIR, "outputs")
+FIGURES_DIR  = os.path.join(OUTPUT_DIR, "figures")
+os.makedirs(FIGURES_DIR, exist_ok=True)
+
 RANDOM_STATE = 42
 THRESHOLD    = 0.41   # optimised for F1 on validation set (see Step 7)
 
@@ -399,7 +404,7 @@ for ax, (col, label) in zip(axes.flat, KEY_FEATURES.items()):
     ax.legend(fontsize=7)
 
 plt.tight_layout()
-plt.savefig(f"{DATA_DIR}/eda_distributions.png", dpi=150, bbox_inches="tight")
+plt.savefig(f"{FIGURES_DIR}/eda_distributions.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved: eda_distributions.png")
 
@@ -557,7 +562,7 @@ ax_cal.set(xlabel="Mean predicted probability", ylabel="Fraction of positives",
 ax_cal.legend()
 ax_cal.set_xlim(0, 1); ax_cal.set_ylim(0, 1)
 plt.tight_layout()
-plt.savefig(f"{DATA_DIR}/calibration_curve.png", dpi=150, bbox_inches="tight")
+plt.savefig(f"{FIGURES_DIR}/calibration_curve.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved: calibration_curve.png")
 print("""
@@ -606,7 +611,7 @@ axes[2].set_title("Top-20 Feature Importances (RF)", fontsize=11)
 axes[2].set_xlabel("Importance")
 
 plt.tight_layout()
-plt.savefig(f"{DATA_DIR}/model_evaluation.png", dpi=150, bbox_inches="tight")
+plt.savefig(f"{FIGURES_DIR}/model_evaluation.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved: model_evaluation.png")
 
@@ -645,7 +650,7 @@ axes[1].set(xlabel="Recall", ylabel="Precision",
             title=f"Precision-Recall Curve (AP={rf_ap:.3f})")
 
 plt.tight_layout()
-plt.savefig(f"{DATA_DIR}/threshold_analysis.png", dpi=150, bbox_inches="tight")
+plt.savefig(f"{FIGURES_DIR}/threshold_analysis.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved: threshold_analysis.png")
 
@@ -707,7 +712,7 @@ ax.set(xlabel="Business Score (probability)", ylabel="Number of Consumer Cards",
        title="Distribution of Business Scores – Consumer Cardholders")
 ax.legend()
 plt.tight_layout()
-plt.savefig(f"{DATA_DIR}/consumer_score_distribution.png", dpi=150, bbox_inches="tight")
+plt.savefig(f"{FIGURES_DIR}/consumer_score_distribution.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved: consumer_score_distribution.png")
 
@@ -718,7 +723,7 @@ export_cols = [
     "predicted_hidden_entrepreneur",
 ] + FEATURE_COLS
 consumer_feat.sort_values("business_score", ascending=False)[export_cols].to_csv(
-    f"{DATA_DIR}/hidden_entrepreneur_scores.csv", index=False)
+    f"{OUTPUT_DIR}/hidden_entrepreneur_scores.csv", index=False)
 print("Saved: hidden_entrepreneur_scores.csv")
 
 print("\nTop-20 hidden entrepreneur candidates (with confidence bands):")
